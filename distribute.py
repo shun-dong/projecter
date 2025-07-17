@@ -15,8 +15,8 @@ def distribute(PROJECT_DIR, TARGET_READMES_DIR):
         return f'[{label}]({rel_path})'
 
     for fname in os.listdir(TARGET_READMES_DIR):
-        if fname.endswith(".md"):
-            project = os.path.splitext(fname)[0]
+        if fname.endswith(".md") and fname.startswith("!"):
+            project = os.path.splitext(fname)[0][1:]  # 去掉前缀 '!'
             src_file = os.path.join(TARGET_READMES_DIR, fname)
             dst_readme = os.path.join(PROJECT_DIR, project, 'README.md')
             # 仅同步到已存在的本地项目目录
@@ -31,6 +31,8 @@ def distribute(PROJECT_DIR, TARGET_READMES_DIR):
                 with open(dst_readme, "w", encoding='utf-8') as f:
                     f.write(new_content)
                 print(f"同步: {src_file} -> {dst_readme}")
+            else:
+                print(f"跳过: {project} 未实例化")
 
     print("反向同步完成。")
 
@@ -38,5 +40,5 @@ if __name__ == "__main__":
     # 你自己的项目主目录（包含各项目子文件夹）
     PROJECT_DIR = r"C:\Users\liuSu\Desktop\test"   # 替换为你的实际路径
     # 要同步到的目录
-    TARGET_READMES_DIR = r"C:\Users\liuSu\Desktop\test2"  # 替换为你的实际路径
+    TARGET_READMES_DIR = r"C:\Users\liuSu\Desktop\test3"  # 替换为你的实际路径
     distribute(PROJECT_DIR, TARGET_READMES_DIR)
