@@ -1,6 +1,6 @@
 ---
-project: "projecter"
-tags: []
+project: projecter
+tags: 
 ---
 
 projecter

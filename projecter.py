@@ -17,10 +17,8 @@ def has_key_line(yaml_lines, key):
             return True
     return False
 
-def make_front_matter(project_name, tags=None):
-    tags = tags if tags is not None else []
-    tags_str = "[" + ", ".join(f"'{t}'" for t in tags) + "]"
-    return f"---\nproject: \"{project_name}\"\ntags: {tags_str}\n---\n"
+def make_front_matter(project_name):
+    return f"---\nproject: {project_name}\ntags:\n---\n"
 
 def gen_tree_markdown(subdir_path, project_name):
     """生成项目名+一级子内容（含README本身）的树，带markdown链接"""
@@ -53,7 +51,7 @@ def project(PROJECT_DIR):
                 continue
 
             readme_path = os.path.join(subdir_path, "README.md")
-            front = make_front_matter(entry, [])
+            front = make_front_matter(entry)
             tree_block = gen_tree_markdown(subdir_path, entry)
 
             if not os.path.exists(readme_path):
