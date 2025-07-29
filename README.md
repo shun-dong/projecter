@@ -1,6 +1,6 @@
 ---
 project: projecter
-tags: 
+tags: python
 ---
 
 projecter
