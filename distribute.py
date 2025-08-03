@@ -30,7 +30,7 @@ def distribute(PROJECT_DIR, TARGET_READMES_DIR):
                 new_content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', replacer, content)
                 with open(dst_readme, "w", encoding='utf-8') as f:
                     f.write(new_content)
-                print(f"同步: {src_file} -> {dst_readme}")
+                # print(f"同步: {src_file} -> {dst_readme}")
             else:
                 print(f"跳过: {project} 未实例化")
 

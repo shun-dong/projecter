@@ -14,11 +14,13 @@ def merge_with_conflict_markers(old_content, new_content):
             merged_lines.extend(old_lines[i1:i2])
         elif tag == 'replace':
             conflict = True
-            merged_lines.append("<<<<<<< 新内容")
-            merged_lines.extend(new_lines[j1:j2])
-            merged_lines.append("=======")
+            # merged_lines.append("<<<<<<< 新内容")
+            # merged_lines.extend(new_lines[j1:j2])
+            # merged_lines.append("=======")
+            # merged_lines.extend(old_lines[i1:i2])
+            # merged_lines.append(">>>>>>> 旧内容")
             merged_lines.extend(old_lines[i1:i2])
-            merged_lines.append(">>>>>>> 旧内容")
+            print(f"冲突: 新内容{new_lines[j1:j2]}，旧内容{old_lines[i1:i2]}")
         elif tag == 'delete':
             conflict = True
             merged_lines.extend(old_lines[i1:i2])
@@ -50,7 +52,7 @@ def collect(PROJECT_DIR, TARGET_READMES_DIRS):
             new_content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', replacer, content)
             # 优先同步到第一个存在同名文件的目录，否则放到最后一个目录
             target_file = None
-            for dir in TARGET_READMES_DIRS[:-1]:
+            for dir in TARGET_READMES_DIRS:
                 candidate = os.path.join(dir, f"!{project}.md")
                 if os.path.exists(candidate):
                     target_file = candidate
@@ -70,8 +72,8 @@ def collect(PROJECT_DIR, TARGET_READMES_DIRS):
                 f.write(merged_content)
             if conflict:
                 print(f"冲突: {project} -> {target_file} 已自动合并并标记冲突")
-            else:
-                print(f"同步: {project} -> {target_file}")
+            # else:
+            #     print(f"同步: {project} -> {target_file}")
 
     print("正向同步完成。")
 

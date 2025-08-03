@@ -99,11 +99,11 @@ def project(PROJECT_DIR):
                     result_lines.insert(0, "\n" + tree_block + "\n")
             with open(readme_path, 'w', encoding='utf-8') as f:
                 f.writelines(result_lines)
-            print(f"更新: {readme_path}")
+            # print(f"更新: {readme_path}")
 
     print("处理完成。")
 
 if __name__ == "__main__":
-    PROJECT_DIR = r"C:\Users\liuSu\Desktop\test"
+    PROJECT_DIR = r"C:\Users\liuSu\Projects"
     project(PROJECT_DIR)
     
