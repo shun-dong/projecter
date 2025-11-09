@@ -1,19 +1,41 @@
 import os
 import re
-def distribute(PROJECT_DIR, TARGET_READMES_DIR):
-    def make_relative_link(project_abspath, match):
-        label, abs_path = match.group(1), match.group(2)
-        # 将绝对路径转为相对路径
-        # 只针对属于本项目目录下的文件
-        abs_path_norm = abs_path.replace("\\", "/")
-        proj_path_norm = project_abspath.replace("\\", "/")
-        if abs_path_norm.startswith(proj_path_norm):
-            rel_path = os.path.relpath(abs_path_norm, proj_path_norm).replace("\\", "/")
-        else:
-            # 不属于本项目内的，不处理
-            rel_path = abs_path
-        return f'[{label}]({rel_path})'
 
+def remove_log_block(md_text):
+    lines = md_text.split('\n')
+    output_lines = []
+    skipping = False
+    for line in lines:
+        stripped = line.lstrip()
+        # 这里正则只要以 # 可变空白 log 开头，不管后面是什么，都跳过
+        if re.match(r'^#+\s*log', stripped, re.IGNORECASE):
+            skipping = True
+            continue
+        if skipping:
+            # 非 log 且以 # 开头说明新标题，结束跳过
+            if re.match(r'^#(?!\s*log)', stripped):
+                skipping = False
+                output_lines.append(line)
+            # 其余continue
+        else:
+            output_lines.append(line)
+    return '\n'.join(output_lines)
+
+def make_relative_link(project_abspath, match):
+    label, abs_path = match.group(1), match.group(2)
+    # 将绝对路径转为相对路径
+    # 只针对属于本项目目录下的文件
+    abs_path_norm = abs_path.replace("\\", "/")
+    proj_path_norm = project_abspath.replace("\\", "/")
+    if abs_path_norm.startswith(proj_path_norm):
+        rel_path = os.path.relpath(abs_path_norm, proj_path_norm).replace("\\", "/")
+    else:
+        # 不属于本项目内的，不处理
+        rel_path = abs_path
+    return f'[{label}]({rel_path})'
+
+def distribute(PROJECT_DIR, TARGET_READMES_DIR):
+    '''将笔记库中的 README.md 内容同步回各项目目录下的 README.md, 注意会去除 log 区块'''
     for fname in os.listdir(TARGET_READMES_DIR):
         if fname.endswith(".md") and fname.startswith("!"):
             project = os.path.splitext(fname)[0][1:]  # 去掉前缀 '!'
@@ -28,6 +50,7 @@ def distribute(PROJECT_DIR, TARGET_READMES_DIR):
                 def replacer(match):
                     return make_relative_link(abs_project_path, match)
                 new_content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', replacer, content)
+                new_content = remove_log_block(new_content)
                 with open(dst_readme, "w", encoding='utf-8') as f:
                     f.write(new_content)
                 # print(f"同步: {src_file} -> {dst_readme}")

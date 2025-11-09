@@ -1,33 +1,7 @@
 import os
 import re
-import difflib
+from merge2 import merge2
 
-def merge_with_conflict_markers(old_content, new_content):
-    old_lines = old_content.splitlines()
-    new_lines = new_content.splitlines()
-    sm = difflib.SequenceMatcher(None, old_lines, new_lines)
-    merged_lines = []
-    conflict = False
-
-    for tag, i1, i2, j1, j2 in sm.get_opcodes():
-        if tag == 'equal':
-            merged_lines.extend(old_lines[i1:i2])
-        elif tag == 'replace':
-            conflict = True
-            # merged_lines.append("<<<<<<< 新内容")
-            # merged_lines.extend(new_lines[j1:j2])
-            # merged_lines.append("=======")
-            # merged_lines.extend(old_lines[i1:i2])
-            # merged_lines.append(">>>>>>> 旧内容")
-            merged_lines.extend(old_lines[i1:i2])
-            print(f"冲突: 新内容{new_lines[j1:j2]}，旧内容{old_lines[i1:i2]}")
-        elif tag == 'delete':
-            conflict = True
-            merged_lines.extend(old_lines[i1:i2])
-        elif tag == 'insert':
-            conflict = True
-            merged_lines.extend(new_lines[j1:j2])
-    return "\n".join(merged_lines), conflict
 
 def collect(PROJECT_DIR, TARGET_READMES_DIRS):
     # 确保所有目标目录存在
@@ -37,6 +11,10 @@ def collect(PROJECT_DIR, TARGET_READMES_DIRS):
 
     def make_absolute_link(proj_path, proj_name, match):
         label, rel_path = match.group(1), match.group(2)
+        if (rel_path.endswith(".cn") or rel_path.startswith("http") or rel_path.endswith(".com")  or rel_path.endswith(".me")
+            or rel_path.startswith("www") or rel_path.endswith(".org") or rel_path.endswith(".net") or rel_path.endswith(".edu")):
+            # 如果是绝对路径或外部链接，直接返回
+            return f'[{label}]({rel_path})'
         abs_path = os.path.join(proj_path, rel_path)
         abs_path_norm = os.path.abspath(abs_path).replace("\\", "/")
         return f'[{label}]({abs_path_norm})'
@@ -67,7 +45,7 @@ def collect(PROJECT_DIR, TARGET_READMES_DIRS):
                 with open(target_file, "r", encoding='utf-8') as f:
                     old_content = f.read()
                 if old_content != new_content:
-                    merged_content, conflict = merge_with_conflict_markers(old_content, new_content)
+                    merged_content, conflict = merge2(old_content, new_content)
             with open(target_file, "w", encoding='utf-8') as f:
                 f.write(merged_content)
             if conflict:

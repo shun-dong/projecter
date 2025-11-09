@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mytool"
+version = "0.1.0"
+authors = [
+    { name="Kaelvio", email="sun_don@foxmail.com" }
+]
+description = "auto generate README.md and manage project files"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+projecter = "cli:cli"

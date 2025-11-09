@@ -40,7 +40,28 @@ def gen_tree_markdown(subdir_path, project_name):
         tree_lines.append(prefix + link)
     return "\n".join(tree_lines) + "\n"
 
+def remove_tree_block(lines, project_name):
+    """
+    移除 content (字符串) 里 project 文件树块，返回剩余部分
+    - 树块开头特征：'<项目名>\n├── [README.md](README.md)' 或 '└──' 行
+    """
+    n = len(lines)
+    start, end = None, None
+
+    # 识别树开头
+    for i in range(n):
+        if lines[i].strip() == project_name and i+1 < n and (lines[i+1].lstrip().startswith('├── [') or lines[i+1].lstrip().startswith('└── [')):
+            start = i
+            # 往后找连续的├──或└──行
+            end = start+1
+            while end < n and (lines[end].lstrip().startswith('├── [') or lines[end].lstrip().startswith('└── [')):
+                end += 1
+            # 包括project名那行和树的全部
+            return lines[:start] + lines[end:]
+    return lines  # 没找到树，原样返回
+
 def project(PROJECT_DIR):
+    '''为目录下每个子项目生成或更新 README.md 文件'''
     for entry in sorted(os.listdir(PROJECT_DIR)):
         subdir_path = os.path.join(PROJECT_DIR, entry)
         if os.path.isdir(subdir_path):
@@ -55,17 +76,16 @@ def project(PROJECT_DIR):
             tree_block = gen_tree_markdown(subdir_path, entry)
 
             if not os.path.exists(readme_path):
-                # 先生成 README 文件，再重新生成文件树，把 README.md 肯定加进去
+                # 先生成 README 文件
                 with open(readme_path, 'w', encoding='utf-8') as f:
                     f.write(front)
-                    # 注意此时要用新的树
-                    tree_block = gen_tree_markdown(subdir_path, entry)
-                    f.write("\n" + tree_block + "\n")
                 print(f"新建: {readme_path}")
                 continue
 
             with open(readme_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
+                # 移除已有树块
+                lines = remove_tree_block(lines, entry)
             yaml_lines, yaml_endline = parse_yaml_front(lines)
             need_fix_front = False
             if not yaml_lines or not has_key_line(yaml_lines, 'project') or not has_key_line(yaml_lines, 'tags'):
@@ -73,11 +93,6 @@ def project(PROJECT_DIR):
                 print(f"修复front-matter: {readme_path}")
 
             content_after = "".join(lines[yaml_endline+1:]) if yaml_endline >= 0 else "".join(lines)
-            has_tree = (
-                f"{entry}\n" in content_after and
-                ("├── [" in content_after or "└── [" in content_after)
-                and "[README.md](README.md)" in content_after
-            )
 
             result_lines = []
             if need_fix_front:
@@ -86,7 +101,7 @@ def project(PROJECT_DIR):
                 result_lines.append(content_after.lstrip('\n'))
             else:
                 result_lines.extend(lines)
-            if not has_tree and tree_block:
+            if tree_block:
                 if not need_fix_front and yaml_endline >= 0:
                     out_before = lines[:yaml_endline+1]
                     out_after = lines[yaml_endline+1:]
@@ -104,6 +119,6 @@ def project(PROJECT_DIR):
     print("处理完成。")
 
 if __name__ == "__main__":
-    PROJECT_DIR = r"C:\Users\liuSu\Projects"
+    PROJECT_DIR = r"C:\Users\liuSu\desktop\test"
     project(PROJECT_DIR)
     

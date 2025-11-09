@@ -1,3 +1,11 @@
+Metadata-Version: 2.4
+Name: mytool
+Version: 0.1.0
+Summary: auto generate README.md and manage project files
+Author-email: Kaelvio <sun_don@foxmail.com>
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+
 ---
 project: projecter
 tags: 
