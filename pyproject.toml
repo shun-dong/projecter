@@ -3,15 +3,20 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mytool"
-version = "0.1.0"
+name = "projecter"
+version = "2.0.0"
 authors = [
     { name="Kaelvio", email="sun_don@foxmail.com" }
 ]
-description = "auto generate README.md and manage project files"
+description = "Manage project README and notes synchronization"
 readme = "README.md"
 requires-python = ">=3.8"
-dependencies = []
+dependencies = [
+    "click>=8.0.0"
+]
 
 [project.scripts]
-projecter = "cli:cli"
+projecter = "projecter.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]

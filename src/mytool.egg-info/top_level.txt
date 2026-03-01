@@ -1,6 +1,0 @@
-cli
-collect
-distribute
-merge2
-project
-sync
