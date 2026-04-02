@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Projecter CLI - 项目管理工具
+"""Projecter CLI - Manage projects and notes synchronization
 
-简化版命令：
-- create: 创建新项目
-- delete: 删除项目
-- list: 列出所有项目
-- tree: 生成项目文件树
-- collect: 项目 → 笔记（单向同步）
-- distribute: 笔记 → 项目（单向同步）
-- diff: 查看差异
-- link: 手动关联（可选）
-- config: 配置管理
+Commands:
+- create: Create a new project in workspace
+- delete: Delete a project from workspace
+- list: List all projects in workspace
+- tree: Display file tree of a project
+- distribute: Sync notes → workspace (one-way)
+- diff: Show diff between workspace and notes
+- link: Manually link project to note
+- read: Read and display a note from notes directories
+- config: Manage configuration
+
+The CLI is used to manage the workspace and fetch information from the notes side.
 """
 
 import json
@@ -20,7 +22,7 @@ from pathlib import Path
 
 import click
 
-from .scanner import scan_projects, scan_notes
+from .scanner import scan_projects, scan_notes, read_file_content
 from .matcher import match_project_to_notes
 from .collect import collect as collect_module
 from .distribute import distribute as distribute_module
@@ -28,13 +30,13 @@ from .distribute import distribute
 from .diff import diff
 
 
-# 配置文件路径
+# Config file paths
 CONFIG_DIR = Path.home() / '.config' / 'projecter'
 CONFIG_FILE = CONFIG_DIR / 'config.json'
 
 
 def load_config():
-    """加载配置"""
+    """Load configuration from file"""
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -42,79 +44,100 @@ def load_config():
 
 
 def save_config(config):
-    """保存配置"""
+    """Save configuration to file"""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
 
 
 def get_config():
-    """获取配置，如果没有则引导创建"""
+    """Get configuration, create interactively if not exists"""
     config = load_config()
     if config is None:
-        click.echo("首次使用，需要配置...")
+        click.echo("First time setup, configuration required...")
         config = create_config_interactive()
     return config
 
 
 def create_config_interactive():
-    """交互式创建配置"""
-    click.echo("\n=== Projecter 配置 ===")
-    
-    project_dir = click.prompt("项目根目录路径", type=str)
-    while not os.path.isdir(project_dir):
-        click.echo(f"目录不存在: {project_dir}")
-        project_dir = click.prompt("项目根目录路径", type=str)
-    
-    note_dirs = []
-    click.echo("\n笔记目录（可添加多个，输入空行结束）")
+    """Interactively create configuration"""
+    click.echo("\n=== Projecter Configuration ===")
+
+    workspace_dir = click.prompt("Workspace directory path", type=str)
+    while not os.path.isdir(workspace_dir):
+        click.echo(f"Directory does not exist: {workspace_dir}")
+        workspace_dir = click.prompt("Workspace directory path", type=str)
+
+    notes_dirs = []
+    click.echo("\nNotes directories (add multiple, empty line to finish)")
     while True:
-        note_dir = click.prompt("笔记目录路径", type=str, default='')
-        if not note_dir:
+        notes_dir = click.prompt("Notes directory path", type=str, default='')
+        if not notes_dir:
             break
-        if os.path.isdir(note_dir):
-            note_dirs.append(note_dir)
-            click.echo(f"已添加: {note_dir}")
+        if os.path.isdir(notes_dir):
+            notes_dirs.append(notes_dir)
+            click.echo(f"Added: {notes_dir}")
         else:
-            click.echo(f"目录不存在: {note_dir}")
-    
-    if not note_dirs:
-        click.echo("错误: 至少需要指定一个笔记目录")
+            click.echo(f"Directory does not exist: {notes_dir}")
+
+    if not notes_dirs:
+        click.echo("Error: At least one notes directory is required")
         sys.exit(1)
-    
+
     config = {
-        'project_dir': project_dir,
-        'note_dirs': note_dirs
+        'workspace_dir': workspace_dir,
+        'notes_dirs': notes_dirs
     }
-    
+
     save_config(config)
-    click.echo(f"\n配置已保存到: {CONFIG_FILE}")
+    click.echo(f"\nConfiguration saved to: {CONFIG_FILE}")
     return config
 
 
-@click.group()
-@click.version_option(version='2.0.0')
+@click.group(
+    help="""Projecter - Manage projects and notes synchronization
+
+Projecter manages the relationship between your workspace (project directories)
+and your notes. It provides commands to create projects, sync content between
+workspace and notes, and inspect differences.
+
+Configuration:
+  Config is stored in ~/.config/projecter/config.json
+  Run 'projecter config' to set up workspace and notes directories.
+"""
+)
+@click.version_option(version='2.0.0', prog_name='projecter')
 def cli():
-    """Projecter - 管理项目 README 和笔记同步"""
+    """Projecter - Manage projects and notes synchronization"""
     pass
 
 
-@cli.command()
+@cli.command(
+    short_help="Create a new project in workspace (NAME)",
+    help="""Create a new project in workspace
+
+Arguments:
+  NAME    Name of the project to create
+
+Creates a new project directory in the configured workspace with a README.md
+containing YAML front-matter. The project field in YAML will be set to NAME.
+"""
+)
 @click.argument('name')
 def create(name):
-    """创建新项目"""
+    """Create a new project in workspace"""
     config = get_config()
-    project_dir = config['project_dir']
-    project_path = os.path.join(project_dir, name)
-    
+    workspace_dir = config.get('workspace_dir', config.get('project_dir'))
+    project_path = os.path.join(workspace_dir, name)
+
     if os.path.exists(project_path):
-        click.echo(f"错误: 项目 '{name}' 已存在")
+        click.echo(f"Error: Project '{name}' already exists")
         sys.exit(1)
-    
-    # 创建项目目录
+
+    # Create project directory
     os.makedirs(project_path)
-    
-    # 创建 README.md
+
+    # Create README.md
     readme_path = os.path.join(project_path, 'README.md')
     content = f"""---
 project: {name}
@@ -123,157 +146,269 @@ tags:
 
 # {name}
 
-项目描述...
+Project description...
 """
     with open(readme_path, 'w', encoding='utf-8') as f:
         f.write(content)
-    
-    click.echo(f"✓ 创建项目: {name}")
-    click.echo(f"  路径: {project_path}")
+
+    click.echo(f"Created project: {name}")
+    click.echo(f"  Path: {project_path}")
     click.echo(f"  README: {readme_path}")
 
 
-@cli.command()
+@cli.command(
+    short_help="Delete a project from workspace (NAME)",
+    help="""Delete a project from workspace
+
+Arguments:
+  NAME    Name of the project to delete
+
+Deletes the project directory and all its contents from the workspace.
+This operation cannot be undone. A confirmation prompt will be shown.
+"""
+)
 @click.argument('name')
-@click.confirmation_option(prompt='确定要删除这个项目吗？此操作不可恢复！')
+@click.confirmation_option(prompt='Are you sure you want to delete this project? This cannot be undone!')
 def delete(name):
-    """删除项目"""
+    """Delete a project from workspace"""
     config = get_config()
-    project_dir = config['project_dir']
-    project_path = os.path.join(project_dir, name)
-    
+    workspace_dir = config.get('workspace_dir', config.get('project_dir'))
+    project_path = os.path.join(workspace_dir, name)
+
     if not os.path.exists(project_path):
-        click.echo(f"错误: 项目 '{name}' 不存在")
+        click.echo(f"Error: Project '{name}' does not exist")
         sys.exit(1)
-    
+
     import shutil
     shutil.rmtree(project_path)
-    click.echo(f"✓ 已删除项目: {name}")
+    click.echo(f"Deleted project: {name}")
 
 
-@cli.command()
+@cli.command(
+    short_help="List all projects in workspace",
+    help="""List all projects in workspace
+
+Displays all projects found in the workspace directory, along with their
+YAML 'project' field values if present.
+"""
+)
 def list():
-    """列出所有项目"""
+    """List all projects in workspace"""
     config = get_config()
-    projects = scan_projects(config['project_dir'])
-    
+    workspace_dir = config.get('workspace_dir', config.get('project_dir'))
+    projects = scan_projects(workspace_dir)
+
     if not projects:
-        click.echo("没有找到项目")
+        click.echo("No projects found")
         return
-    
-    click.echo(f"\n找到 {len(projects)} 个项目:\n")
-    click.echo(f"{'名称':<20} {'Project 字段'}")
+
+    click.echo(f"\nFound {len(projects)} projects:\n")
+    click.echo(f"{'Name':<20} {'Project Field'}")
     click.echo("-" * 40)
-    
+
     for project in projects:
         project_field = project.yaml_front.get('project', '-')
         click.echo(f"{project.name:<20} {project_field}")
 
 
-@cli.command()
+@cli.command(
+    short_help="Display file tree of a project (NAME)",
+    help="""Display file tree of a project
+
+Arguments:
+  NAME    Name of the project
+
+Shows a simple file tree of the project directory, with README.md listed first.
+"""
+)
 @click.argument('name')
 def tree(name):
-    """生成项目文件树"""
+    """Display file tree of a project"""
     config = get_config()
-    project_dir = config['project_dir']
-    project_path = os.path.join(project_dir, name)
-    
+    workspace_dir = config.get('workspace_dir', config.get('project_dir'))
+    project_path = os.path.join(workspace_dir, name)
+
     if not os.path.exists(project_path):
-        click.echo(f"错误: 项目 '{name}' 不存在")
+        click.echo(f"Error: Project '{name}' does not exist")
         sys.exit(1)
-    
-    # 生成文件树
+
+    # Generate file tree
     click.echo(f"\n{name}")
     items = sorted(os.listdir(project_path))
-    
-    # 确保 README.md 在最前面
+
+    # Ensure README.md is first
     if 'README.md' in items:
         items.remove('README.md')
         items.insert(0, 'README.md')
-    
+
     for i, item in enumerate(items):
         item_path = os.path.join(project_path, item)
         is_dir = os.path.isdir(item_path)
         suffix = "/" if is_dir else ""
-        
-        # 最后一个用 └──，其他用 ├──
+
         prefix = "└── " if i == len(items) - 1 else "├── "
         click.echo(f"{prefix}[{item}{suffix}]({item}{suffix})")
-    
-    click.echo("\n文件树已生成，请复制使用")
+
+    click.echo("\nFile tree generated")
 
 
-@cli.command()
-@click.option('--dry-run', is_flag=True, help='预览模式，不实际执行')
-def collect(dry_run):
-    """项目 → 笔记同步（单向）"""
+# collect command is kept in Python but hidden from CLI
+# Users can still use: python -m projecter.collect
+def _collect(dry_run):
+    """Internal collect function (not exposed as CLI command)"""
     config = get_config()
-    projects = scan_projects(config['project_dir'])
-    collect_module(projects, config['note_dirs'], dry_run)
+    workspace_dir = config.get('workspace_dir', config.get('project_dir'))
+    projects = scan_projects(workspace_dir)
+    collect_module(projects, config.get('notes_dirs', config.get('note_dirs', [])), dry_run)
 
 
-@cli.command()
-@click.option('--dry-run', is_flag=True, help='预览模式，不实际执行')
+@cli.command(
+    short_help="Sync notes -> workspace (--dry-run)",
+    help="""Sync notes → workspace (one-way)
+
+Options:
+  --dry-run    Preview mode, do not actually execute
+
+Synchronizes content from notes directories to the workspace.
+Converts absolute paths to relative paths and removes log blocks.
+"""
+)
+@click.option('--dry-run', is_flag=True, help='Preview mode, do not actually execute')
 def distribute(dry_run):
-    """笔记 → 项目同步（单向）"""
+    """Sync notes → workspace (one-way)"""
     config = get_config()
-    projects = scan_projects(config['project_dir'])
-    notes = scan_notes(config['note_dirs'])
+    workspace_dir = config.get('workspace_dir', config.get('project_dir'))
+    projects = scan_projects(workspace_dir)
+    notes = scan_notes(config.get('notes_dirs', config.get('note_dirs', [])))
     distribute_module(notes, projects, dry_run)
 
 
-@cli.command()
+@cli.command(
+    name='diff',
+    short_help="Show diff between workspace and notes ([NAME] -v)",
+    help="""Show diff between workspace and notes
+
+Arguments:
+  [PROJECT_NAME]    Optional project name to check (default: check all)
+
+Options:
+  -v, --verbose    Show detailed differences
+
+Compares README files in workspace with corresponding notes and shows
+the differences. If no project name is specified, checks all projects.
+"""
+)
 @click.argument('project_name', required=False)
-@click.option('-v', '--verbose', is_flag=True, help='显示详细差异')
+@click.option('-v', '--verbose', is_flag=True, help='Show detailed differences')
 def diff_cmd(project_name, verbose):
-    """查看项目和笔记的差异"""
+    """Show diff between workspace and notes"""
     config = get_config()
-    projects = scan_projects(config['project_dir'])
-    notes = scan_notes(config['note_dirs'])
-    
+    workspace_dir = config.get('workspace_dir', config.get('project_dir'))
+    projects = scan_projects(workspace_dir)
+    notes = scan_notes(config.get('notes_dirs', config.get('note_dirs', [])))
+
     if project_name:
-        # 只检查指定项目
+        # Check specific project only
         project = next((p for p in projects if p.name == project_name), None)
         if not project:
-            click.echo(f"错误: 项目 '{project_name}' 不存在")
+            click.echo(f"Error: Project '{project_name}' does not exist")
             sys.exit(1)
-        
+
         note_map = {n.yaml_front.get('project') or n.name: n for n in notes}
         note = note_map.get(project_name)
-        
+
         from .diff import diff_project_note, print_diff
         result = diff_project_note(project, note)
         print_diff(result, verbose)
     else:
-        # 检查所有项目
+        # Check all projects
         diff(projects, notes, verbose)
 
 
-@cli.command()
+@cli.command(
+    short_help="Manually link project to note (PROJECT NOTE)",
+    help="""Manually link project to note
+
+Arguments:
+  PROJECT    Project name in workspace
+  NOTE       Note name in notes directories
+
+Links a project to a note by modifying the YAML front-matter.
+Note: This feature is not yet fully implemented. You can manually
+edit the note's YAML front-matter to add the 'project' field.
+"""
+)
 @click.argument('project')
 @click.argument('note')
 def link(project, note):
-    """手动关联项目和笔记（通过修改 YAML）"""
-    # 这个功能可选实现
-    click.echo(f"关联功能待实现: {project} <-> {note}")
-    click.echo("提示: 可以直接编辑笔记的 YAML front-matter 添加 project 字段")
+    """Manually link project to note"""
+    click.echo(f"Link feature not yet implemented: {project} <-> {note}")
+    click.echo("Tip: You can manually edit the note's YAML front-matter to add the 'project' field")
 
 
-@cli.command()
+@cli.command(
+    short_help="Read and display a note from notes directories (NAME)",
+    help="""Read and display a note from notes directories
+
+Arguments:
+  NAME    Name of the note to read (without .md extension)
+
+Searches for NAME.md in all configured notes directories and displays
+its contents. If multiple notes with the same name exist, displays
+a warning and shows the first one found.
+"""
+)
+@click.argument('name')
+def read(name):
+    """Read and display a note from notes directories"""
+    config = get_config()
+    notes_dirs = config.get('notes_dirs', config.get('note_dirs', []))
+
+    # Search for {name}.md in all notes directories
+    found = []
+    for notes_dir in notes_dirs:
+        note_path = os.path.join(notes_dir, f"{name}.md")
+        if os.path.exists(note_path):
+            found.append(note_path)
+
+    if not found:
+        click.echo(f"Error: Note '{name}' not found in any notes directory")
+        sys.exit(1)
+
+    if len(found) > 1:
+        click.echo(f"Warning: Multiple notes found, displaying first:")
+        for path in found:
+            click.echo(f"  - {path}")
+
+    # Read and display content
+    content = read_file_content(found[0])
+    click.echo(content)
+
+
+@cli.command(
+    short_help="Manage configuration",
+    help="""Manage configuration
+
+Interactive command to view and modify the projecter configuration.
+Shows current workspace and notes directories, and allows reconfiguration.
+"""
+)
 def config():
-    """修改配置"""
+    """Manage configuration"""
     current_config = load_config()
-    
+
     if current_config:
-        click.echo("\n当前配置:")
-        click.echo(f"  项目目录: {current_config['project_dir']}")
-        click.echo(f"  笔记目录: {', '.join(current_config['note_dirs'])}")
-    
-    if click.confirm("\n要重新配置吗？"):
+        click.echo("\nCurrent configuration:")
+        workspace = current_config.get('workspace_dir', current_config.get('project_dir', 'Not set'))
+        notes = current_config.get('notes_dirs', current_config.get('note_dirs', []))
+        click.echo(f"  Workspace directory: {workspace}")
+        click.echo(f"  Notes directories: {', '.join(notes) if notes else 'Not set'}")
+
+    if click.confirm("\nReconfigure?"):
         create_config_interactive()
 
 
-# 入口点
+# Entry point
 def main():
     cli()
 

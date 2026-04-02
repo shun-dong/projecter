@@ -1,6 +1,6 @@
-"""Scanner - 扫描项目和笔记
+"""Scanner - Scan projects and notes
 
-只扫描 README.md 和 .md 文件，不做其他文件操作
+Only scans README.md and .md files, no other file operations.
 """
 
 import os
@@ -10,50 +10,75 @@ from typing import Dict, List, Optional, NamedTuple
 
 
 class ProjectInfo(NamedTuple):
-    """项目信息"""
+    """Project information"""
     name: str
-    path: str  # 项目目录路径
-    readme_path: str  # README.md 完整路径
-    yaml_front: Dict[str, any]  # YAML front-matter 解析结果
+    path: str  # Project directory path
+    readme_path: str  # Full path to README.md
+    yaml_front: Dict[str, any]  # Parsed YAML front-matter
 
 
 class NoteInfo(NamedTuple):
-    """笔记信息"""
-    name: str  # 文件名（不含 .md）
-    path: str  # 完整路径
-    yaml_front: Dict[str, any]  # YAML front-matter 解析结果
+    """Note information"""
+    name: str  # Filename (without .md)
+    path: str  # Full path
+    yaml_front: Dict[str, any]  # Parsed YAML front-matter
 
 
 def parse_yaml_front_matter(content: str) -> tuple:
-    """解析 YAML front-matter
-    
+    """Parse YAML front-matter
+
     Args:
-        content: 文件内容
-        
+        content: File content
+
     Returns:
         (yaml_dict, remaining_content)
     """
     lines = content.split('\n')
-    
-    # 检查是否以 --- 开头
+
+    # Check if starts with ---
     if not lines or lines[0].strip() != '---':
         return {}, content
-    
+
     yaml_lines = []
     end_index = -1
-    
+
     for i, line in enumerate(lines[1:], 1):
         if line.strip() == '---':
             end_index = i
             break
         yaml_lines.append(line)
-    
+
     if end_index == -1:
         return {}, content
     
-    # 解析 YAML
+    # Parse YAML
     yaml_data = {}
     for line in yaml_lines:
+        line = line.strip()
+        if ':' in line:
+            key, value = line.split(':', 1)
+            key = key.strip()
+            value = value.strip()
+            # Strip quotes from string values
+            if (value.startswith('"') and value.endswith('"')) or \
+               (value.startswith("'") and value.endswith("'")):
+                value = value[1:-1]
+            yaml_data[key] = value
+    
+    remaining = '\n'.join(lines[end_index + 1:])
+    return yaml_data, remaining
+    yaml_data = {}
+    for line in yaml_lines:
+        line = line.strip()
+        if ':' in line:
+            key, value = line.split(':', 1)
+            key = key.strip()
+            value = value.strip()
+            # 去除字符串值的引号
+            if (value.startswith('"') and value.endswith('"')) or \
+               (value.startswith("'") and value.endswith("'")):
+                value = value[1:-1]
+            yaml_data[key] = value
         line = line.strip()
         if ':' in line:
             key, value = line.split(':', 1)
@@ -66,7 +91,7 @@ def parse_yaml_front_matter(content: str) -> tuple:
 
 
 def read_file_content(filepath: str) -> str:
-    """读取文件内容"""
+    """Read file content"""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             return f.read()
@@ -75,13 +100,13 @@ def read_file_content(filepath: str) -> str:
 
 
 def scan_projects(project_dir: str) -> List[ProjectInfo]:
-    """扫描项目目录，找出所有包含 README.md 的非空项目
-    
+    """Scan project directory for non-empty projects containing README.md
+
     Args:
-        project_dir: 项目根目录
-        
+        project_dir: Project root directory
+
     Returns:
-        ProjectInfo 列表
+        List of ProjectInfo
     """
     projects = []
     
@@ -91,34 +116,34 @@ def scan_projects(project_dir: str) -> List[ProjectInfo]:
     for entry in sorted(os.listdir(project_dir)):
         subdir_path = os.path.join(project_dir, entry)
         
-        # 只处理目录
+        # Only process directories
         if not os.path.isdir(subdir_path):
             continue
-        
-        # 检查目录内容
+
+        # Check directory contents
         items = os.listdir(subdir_path)
-        
-        # 必须有 README.md 才认为是项目
+
+        # Must have README.md to be considered a project
         if "README.md" not in items:
             continue
-        
-        # 忽略隐藏文件和目录（如 .git, .DS_Store）
+
+        # Ignore hidden files and directories (e.g., .git, .DS_Store)
         visible_items = [i for i in items if not i.startswith('.')]
         items = os.listdir(subdir_path)
         non_readme_items = [i for i in items if i != "README.md"]
-        
+
         if not visible_items:
-            # 目录完全为空（或只有隐藏文件），跳过
+            # Directory completely empty (or only hidden files), skip
             continue
-            # 空项目，跳过
+            # Empty project, skip
             continue
-        
-        # 读取 README.md
+
+        # Read README.md
         readme_path = os.path.join(subdir_path, "README.md")
         if not os.path.exists(readme_path):
             continue
-        
-        # 读取并解析 YAML front-matter
+
+        # Read and parse YAML front-matter
         content = read_file_content(readme_path)
         yaml_front, _ = parse_yaml_front_matter(content)
         
@@ -133,13 +158,13 @@ def scan_projects(project_dir: str) -> List[ProjectInfo]:
 
 
 def scan_notes(note_dirs: List[str]) -> List[NoteInfo]:
-    """扫描笔记目录，找出所有 .md 文件
-    
+    """Scan notes directories for all .md files
+
     Args:
-        note_dirs: 笔记目录列表
-        
+        note_dirs: List of notes directories
+
     Returns:
-        NoteInfo 列表
+        List of NoteInfo
     """
     notes = []
     
@@ -148,19 +173,19 @@ def scan_notes(note_dirs: List[str]) -> List[NoteInfo]:
             continue
         
         for filename in os.listdir(note_dir):
-            # 只处理 .md 文件
+            # Only process .md files
             if not filename.endswith('.md'):
                 continue
-            
+
             filepath = os.path.join(note_dir, filename)
             if not os.path.isfile(filepath):
                 continue
-            
-            # 读取并解析 YAML front-matter
+
+            # Read and parse YAML front-matter
             content = read_file_content(filepath)
             yaml_front, _ = parse_yaml_front_matter(content)
-            
-            # 文件名去掉 .md
+
+            # Remove .md from filename
             name = filename[:-3]
             
             notes.append(NoteInfo(
@@ -173,14 +198,14 @@ def scan_notes(note_dirs: List[str]) -> List[NoteInfo]:
 
 
 def get_project_content(project_info: ProjectInfo) -> str:
-    """获取项目 README 的内容（不含 YAML front-matter）"""
+    """Get project README content (without YAML front-matter)"""
     content = read_file_content(project_info.readme_path)
     _, remaining = parse_yaml_front_matter(content)
     return remaining
 
 
 def get_note_content(note_info: NoteInfo) -> str:
-    """获取笔记的内容（不含 YAML front-matter）"""
+    """Get note content (without YAML front-matter)"""
     content = read_file_content(note_info.path)
     _, remaining = parse_yaml_front_matter(content)
     return remaining

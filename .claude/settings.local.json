@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find . -type d -name \"__pycache__\" -exec rm -rf {} +)",
+      "Bash(python -c \"from projecter.cli import cli; print\\([cmd.name for cmd in cli.commands.values\\(\\)]\\)\")"
+    ]
+  }
+}

@@ -1,102 +1,114 @@
 # Projecter 2.0
 
-简化版项目管理工具，专注于 README 和笔记的同步。
+Simplified project management tool focused on README and notes synchronization.
 
-## 特性
+## Features
 
-- **简化匹配**：优先匹配 YAML front-matter 的 `project` 字段，其次匹配文件名
-- **手动同步方向**：不再自动解决冲突，用户根据 `diff` 结果选择 `collect` 或 `distribute`
-- **显式文件树**：`tree` 命令生成文件树到 stdout，用户自行复制使用
-- **Git Hook 可选**：留给用户自行处理
+- **Simplified Matching**: Priority matching by YAML front-matter `project` field, then by filename
+- **Manual Sync Direction**: No longer auto-resolves conflicts, users choose `collect` or `distribute` based on `diff` results
+- **Explicit File Tree**: `tree` command generates file tree to stdout, users copy as needed
+- **Git Hook Optional**: Leave to users to handle
 
-## 安装
+## Installation
 
 ```bash
 pip install -e .
 ```
 
-## 配置
+## Configuration
 
-首次运行时会引导配置：
+Interactive setup on first run:
 
 ```bash
 projecter create my-project
 ```
 
-或手动创建配置文件 `~/.config/projecter/config.json`：
+Or manually create config file at `~/.config/projecter/config.json`:
 
 ```json
 {
-    "project_dir": "/path/to/projects",
-    "note_dirs": ["/path/to/notes"]
+    "workspace_dir": "/path/to/workspace",
+    "notes_dirs": ["/path/to/notes"]
 }
 ```
 
-## CLI 命令
+## CLI Commands
 
 ```bash
-# 项目管理
-projecter create <name>          # 创建新项目
-projecter delete <name>          # 删除项目
-projecter list                   # 列出所有项目
-projecter tree <name>            # 生成项目文件树
+# Project management in workspace
+projecter create <name>              # Create new project
+projecter delete <name>              # Delete project
+projecter list                       # List all projects
+projecter tree <name>                # Display project file tree
 
-# 同步（手动方向选择）
-projecter diff [name]            # 查看差异
-projecter collect [--dry-run]    # 项目 → 笔记
-projecter distribute [--dry-run] # 笔记 → 项目
+# Notes information retrieval
+projecter read <name>                # Read and display a note
 
-# 配置
-projecter link <project> <note>  # 手动关联（可选）
-projecter config                 # 修改配置
+# Sync (manual direction selection)
+projecter diff [name] [-v]           # Show diff ([name] optional, -v for verbose)
+projecter distribute [--dry-run]     # Notes -> workspace (one-way)
+
+# Configuration
+projecter link <project> <note>      # Manually link (optional)
+projecter config                     # Manage configuration
 ```
 
-## 工作流示例
+**Note**: `collect` command (workspace -> notes) is kept in Python but hidden from CLI. You can still use it via `python -m projecter.collect` if needed.
+
+## Workflow Example
 
 ```bash
-# 1. 创建项目
+# 1. Create project in workspace
 projecter create my-app
 
-# 2. 在 Obsidian 中编辑笔记
+# 2. Edit note in Obsidian
 
-# 3. 查看差异
+# 3. Check differences
 projecter diff
 
-# 4. 根据差异选择同步方向
-projecter distribute  # 如果笔记较新
-# 或
-projecter collect     # 如果项目较新
+# 4. Choose sync direction based on diff
+projecter distribute  # If notes are newer
 ```
 
-## 匹配机制
+## Matching Mechanism
 
-1. **优先**：YAML front-matter 的 `project` 字段
-2. **其次**：文件名（不含 .md）
-3. **歧义**：打印警告，让用户手动解决
+1. **Priority**: YAML front-matter `project` field
+2. **Secondary**: Filename (without .md)
+3. **Ambiguity**: Print warning, let user resolve manually
 
-## 与旧版的区别
+## CLI Purpose
 
-| 功能 | 旧版 | 新版 |
-|------|------|------|
-| 匹配 | `!` 前缀文件名 | YAML `project` 字段优先 |
-| 同步 | `sync` 自动双向 | `diff` + 手动选择方向 |
-| 冲突 | 自动合并 | 只打印消息 |
-| 文件树 | 自动插入 README | `tree` 命令，用户复制 |
-| Git Hook | 计划集成 | 用户自行处理 |
+The CLI is used to:
+- **Manage workspace**: Create, delete, list projects in the workspace directory
+- **Fetch notes info**: Read and display notes from the notes directories
+- **Sync content**: Distribute notes content to workspace (one-way)
+- **Inspect differences**: Compare workspace and notes to decide sync direction
 
-## 项目结构
+## Project Structure
 
 ```
 src/projecter/
 ├── __init__.py
 ├── __main__.py
-├── cli.py          # CLI 命令
-├── scanner.py      # 项目和笔记扫描
-├── matcher.py      # 匹配逻辑
-├── collect.py      # 项目 → 笔记
-├── distribute.py   # 笔记 → 项目
-└── diff.py         # 差异检测
+├── cli.py          # CLI commands
+├── scanner.py      # Workspace and notes scanning
+├── matcher.py      # Matching logic
+├── collect.py      # Workspace -> notes (hidden from CLI)
+├── distribute.py   # Notes -> workspace
+└── diff.py         # Diff detection
 ```
+
+## Differences from Old Version
+
+| Feature | Old | New |
+|---------|-----|-----|
+| Matching | `!` prefix filename | YAML `project` field priority |
+| Sync | `sync` auto bidirectional | `diff` + manual direction selection |
+| Conflict | Auto merge | Print message only |
+| File Tree | Auto insert to README | `tree` command, user copies |
+| Terminology | "project_dir" / "note_dirs" | "workspace_dir" / "notes_dirs" |
+| Collect | Exposed in CLI | Hidden (kept in Python) |
+| Read | Not available | New command to read notes |
 
 ## License
 

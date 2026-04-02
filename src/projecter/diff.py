@@ -1,9 +1,9 @@
-"""Diff - 检测项目和笔记之间的差异
+"""Diff - Detect differences between workspace and notes
 
-功能：
-- 对比项目 README 和笔记内容
-- 显示差异，不自动解决
-- 帮助用户决定同步方向
+Functionality:
+- Compare workspace README and note content
+- Compare under same "view" (compare after conversion)
+- Display differences without auto-resolution
 """
 
 import difflib
@@ -11,41 +11,47 @@ import os
 from typing import List, Optional, Tuple
 
 from .scanner import ProjectInfo, NoteInfo, read_file_content, parse_yaml_front_matter
+from .collect import convert_relative_to_absolute
+from .distribute import convert_absolute_to_relative, remove_log_block
 
 
 class DiffResult:
-    """差异检测结果"""
+    """Difference detection result"""
     def __init__(self, project_name: str, note_path: Optional[str] = None):
         self.project_name = project_name
         self.note_path = note_path
-        self.project_only = False  # 只有项目，没有笔记
-        self.note_only = False     # 只有笔记，没有项目
-        self.both_modified = False # 双方都有修改
-        self.project_newer = False # 项目较新
-        self.note_newer = False    # 笔记较新
-        self.identical = False     # 内容相同
-        self.diff_lines: List[str] = []  # 差异行
+        self.project_only = False      # Only project, no note
+        self.note_only = False         # Only note, no project
+        self.identical = False         # Content identical
+
+        # Differences from different perspectives
+        self.collect_would_change = False   # collect would change note
+        self.distribute_would_change = False # distribute would change project
+
+        self.diff_collect = []         # collect perspective diff
+        self.diff_distribute = []      # distribute perspective diff
+
         self.error: Optional[str] = None
 
 
-def compute_diff(project_content: str, note_content: str) -> List[str]:
-    """计算两个内容的差异
-    
+def compute_diff(old_content: str, new_content: str, from_name: str = 'old', to_name: str = 'new') -> List[str]:
+    """Compute differences between two contents
+
     Returns:
-        差异行列表（统一 diff 格式）
+        List of diff lines (unified diff format)
     """
-    project_lines = project_content.splitlines(keepends=True)
-    note_lines = note_content.splitlines(keepends=True)
-    
-    # 使用 unified diff
+    old_lines = old_content.splitlines(keepends=True)
+    new_lines = new_content.splitlines(keepends=True)
+
+    # Use unified diff
     diff = list(difflib.unified_diff(
-        note_lines,           # 旧版本
-        project_lines,        # 新版本
-        fromfile='note',      # 笔记
-        tofile='project',     # 项目
+        old_lines,
+        new_lines,
+        fromfile=from_name,
+        tofile=to_name,
         lineterm=''
     ))
-    
+
     return diff
 
 
@@ -53,52 +59,61 @@ def diff_project_note(
     project_info: ProjectInfo,
     note_info: Optional[NoteInfo]
 ) -> DiffResult:
-    """对比单个项目和笔记
-    
+    """Compare a single project and note
+
     Args:
-        project_info: 项目信息
-        note_info: 笔记信息（可能为 None）
-        
+        project_info: Project information
+        note_info: Note information (may be None)
+
     Returns:
         DiffResult
     """
     result = DiffResult(project_info.name, note_info.path if note_info else None)
-    
-    # 读取项目 README 内容（不含 YAML）
+
+    # Read project README content (without YAML)
     project_content_full = read_file_content(project_info.readme_path)
     _, project_body = parse_yaml_front_matter(project_content_full)
-    
-    # 如果没有笔记
+
+    # If no note
     if note_info is None:
         result.project_only = True
         return result
-    
-    # 读取笔记内容（不含 YAML）
+
+    # Read note content (without YAML)
     note_content_full = read_file_content(note_info.path)
     _, note_body = parse_yaml_front_matter(note_content_full)
-    
-    # 对比内容
-    if project_body.strip() == note_body.strip():
+
+    # === Perspective 1: collect (project→notes) ===
+    # Convert project content to note format: relative→absolute paths
+    project_as_note = convert_relative_to_absolute(project_body, project_info.path)
+
+    if project_as_note.strip() != note_body.strip():
+        result.collect_would_change = True
+        result.diff_collect = compute_diff(
+            note_body,
+            project_as_note,
+            from_name='note',
+            to_name='project->note'
+        )
+
+    # === Perspective 2: distribute (notes→project) ===
+    # Convert note content to project format: absolute→relative paths, remove log
+    note_as_project = convert_absolute_to_relative(note_body, project_info.path)
+    note_as_project = remove_log_block(note_as_project)
+
+    if note_as_project.strip() != project_body.strip():
+        result.distribute_would_change = True
+        result.diff_distribute = compute_diff(
+            project_body,
+            note_as_project,
+            from_name='project',
+            to_name='note->project'
+        )
+
+    # If both perspectives are same, content is identical
+    if not result.collect_would_change and not result.distribute_would_change:
         result.identical = True
-        return result
-    
-    # 计算差异
-    result.diff_lines = compute_diff(project_body, note_body)
-    
-    # 简单判断：看谁的内容更长或根据文件修改时间
-    # 注意：这里只是启发式判断，不完全准确
-    try:
-        project_mtime = os.path.getmtime(project_info.readme_path)
-        note_mtime = os.path.getmtime(note_info.path)
-        
-        if project_mtime > note_mtime:
-            result.project_newer = True
-        else:
-            result.note_newer = True
-    except Exception:
-        # 如果无法获取时间，默认双方都有修改
-        result.both_modified = True
-    
+
     return result
 
 
@@ -106,102 +121,113 @@ def diff_all(
     projects: List[ProjectInfo],
     notes: List[NoteInfo]
 ) -> List[DiffResult]:
-    """对比所有项目和笔记
-    
+    """Compare all projects and notes
+
     Args:
-        projects: 项目列表
-        notes: 笔记列表
-        
+        projects: List of projects
+        notes: List of notes
+
     Returns:
-        DiffResult 列表
+        List of DiffResult
     """
-    # 创建笔记映射
+    # Create note mapping
     note_map = {}
     for note in notes:
-        # 优先使用 YAML 中的 project 字段，其次使用文件名
+        # Prefer YAML project field, then filename
         key = note.yaml_front.get('project') or note.name
         if key in note_map:
-            # 有重复，跳过
-            print(f"警告: 笔记 '{key}' 有多个匹配，跳过")
+            # Duplicate, skip
+            print(f"Warning: Note '{key}' has multiple matches, skipping")
             continue
         note_map[key] = note
-    
+
     results = []
-    
+
     for project in projects:
         note = note_map.get(project.name)
         result = diff_project_note(project, note)
         results.append(result)
-    
+
     return results
 
 
 def print_diff(result: DiffResult, verbose: bool = False) -> None:
-    """打印差异结果
-    
+    """Print diff result
+
     Args:
         result: DiffResult
-        verbose: 是否显示详细差异
+        verbose: Whether to show detailed differences
     """
     name = result.project_name
-    
+
     if result.error:
-        print(f"  {name}: 错误 - {result.error}")
+        print(f"  {name}: Error - {result.error}")
         return
-    
+
     if result.project_only:
-        print(f"  {name}: 只有项目，无对应笔记")
-        print(f"    建议: projecter collect {name}")
+        print(f"  {name}: Project only, no corresponding note")
+        print(f"    Suggestion: projecter collect {name}")
         return
-    
+
     if result.note_only:
-        print(f"  {name}: 只有笔记，无对应项目（这种情况不应该发生）")
+        print(f"  {name}: Note only, no corresponding project")
         return
-    
+
     if result.identical:
-        print(f"  {name}: ✓ 内容相同")
+        print(f"  {name}: Content identical")
         return
-    
-    if result.project_newer:
-        print(f"  {name}: 项目较新")
-        print(f"    建议: projecter collect {name}  (项目 → 笔记)")
-    elif result.note_newer:
-        print(f"  {name}: 笔记较新")
-        print(f"    建议: projecter distribute {name}  (笔记 → 项目)")
-    else:
-        print(f"  {name}: 双方都有修改")
-        print(f"    建议: 请手动在 Obsidian 中解决后，再选择方向同步")
-    
-    if verbose and result.diff_lines:
-        print(f"\n  差异详情:")
-        for line in result.diff_lines[:50]:  # 最多显示 50 行
-            print(f"    {line}")
-        if len(result.diff_lines) > 50:
-            print(f"    ... (还有 {len(result.diff_lines) - 50} 行)")
+
+    # Show differences from different perspectives
+    if result.collect_would_change and result.distribute_would_change:
+        print(f"  {name}: Differences in both directions")
+        print(f"    collect would modify note (project→notes)")
+        print(f"    distribute would modify project (notes→project)")
+        print(f"    Suggestion: Please check differences and choose direction")
+    elif result.collect_would_change:
+        print(f"  {name}: collect would modify note")
+        print(f"    Suggestion: projecter collect {name}  (project→notes)")
+    elif result.distribute_would_change:
+        print(f"  {name}: distribute would modify project")
+        print(f"    Suggestion: projecter distribute {name}  (notes→project)")
+
+    if verbose:
+        if result.collect_would_change and result.diff_collect:
+            print(f"\n  collect diff (project→notes):")
+            for line in result.diff_collect[:30]:
+                print(f"    {line}")
+            if len(result.diff_collect) > 30:
+                print(f"    ... ({len(result.diff_collect) - 30} more lines)")
+
+        if result.distribute_would_change and result.diff_distribute:
+            print(f"\n  distribute diff (notes→project):")
+            for line in result.diff_distribute[:30]:
+                print(f"    {line}")
+            if len(result.diff_distribute) > 30:
+                print(f"    ... ({len(result.diff_distribute) - 30} more lines)")
         print()
 
 
 def diff(projects: List[ProjectInfo], notes: List[NoteInfo], verbose: bool = False) -> None:
-    """显示所有差异
-    
+    """Display all differences
+
     Args:
-        projects: 项目列表
-        notes: 笔记列表
-        verbose: 是否显示详细差异
+        projects: List of projects
+        notes: List of notes
+        verbose: Whether to show detailed differences
     """
-    print(f"\n检查项目和笔记的差异...")
-    print(f"项目数: {len(projects)}")
-    print(f"笔记数: {len(notes)}\n")
-    
+    print(f"\nChecking differences between workspace and notes...")
+    print(f"Projects: {len(projects)}")
+    print(f"Notes: {len(notes)}\n")
+
     results = diff_all(projects, notes)
-    
+
     has_diff = False
     for result in results:
         if not result.identical:
             has_diff = True
             print_diff(result, verbose)
-    
+
     if not has_diff:
-        print("所有项目与笔记内容相同，无需同步 ✓")
+        print("All projects and notes have identical content, no sync needed")
     else:
-        print("\n检测到差异，请根据建议手动选择同步方向")
+        print("\nDifferences detected, please manually choose sync direction based on suggestions")

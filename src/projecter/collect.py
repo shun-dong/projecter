@@ -1,9 +1,9 @@
-"""Collect - 将项目 README 同步到笔记
+"""Collect - Sync project README to notes
 
-功能：项目 → 笔记
-- 相对路径 → 绝对路径
-- 不自动解决冲突
-- 只操作 .md 文件
+Functionality: Project → Notes
+- Relative paths → Absolute paths
+- Do not auto-resolve conflicts
+- Only operate on .md files
 """
 
 import os
@@ -16,35 +16,35 @@ from .scanner import ProjectInfo, NoteInfo, read_file_content, parse_yaml_front_
 
 
 def convert_relative_to_absolute(content: str, project_path: str) -> str:
-    """将内容中的相对链接转换为绝对链接
-    
+    """Convert relative links in content to absolute links
+
     Args:
-        content: README 内容
-        project_path: 项目目录路径
-        
+        content: README content
+        project_path: Project directory path
+
     Returns:
-        转换后的内容
+        Converted content
     """
     def replace_link(match):
         label = match.group(1)
         rel_path = match.group(2)
-        
-        # 跳过外部链接和绝对路径
-        if (rel_path.startswith('http') or 
+
+        # Skip external links and absolute paths
+        if (rel_path.startswith('http') or
             rel_path.startswith('/') or
             rel_path.startswith('\\') or
             rel_path.endswith('.com') or
             rel_path.endswith('.cn') or
             rel_path.endswith('.org')):
             return match.group(0)
-        
-        # 转换为绝对路径
+
+        # Convert to absolute path
         abs_path = os.path.abspath(os.path.join(project_path, rel_path))
         abs_path = abs_path.replace('\\', '/')
-        
+
         return f'[{label}]({abs_path})'
-    
-    # 匹配 [label](path) 格式
+
+    # Match [label](path) format
     pattern = r'\[([^\]]+)\]\(([^)]+)\)'
     return re.sub(pattern, replace_link, content)
 
@@ -54,97 +54,108 @@ def collect_project_to_note(
     note_dirs: list,
     dry_run: bool = False
 ) -> bool:
-    """将项目 README 同步到笔记
-    
+    """Sync project README to note
+
     Args:
-        project_info: 项目信息
-        note_dirs: 笔记目录列表
-        dry_run: 如果为 True，只显示操作不执行
-        
+        project_info: Project information
+        note_dirs: List of notes directories
+        dry_run: If True, only display operation without executing
+
     Returns:
-        是否成功
+        Whether successful
     """
-    # 读取项目 README
+    # Read project README
     project_content = read_file_content(project_info.readme_path)
     yaml_front, body = parse_yaml_front_matter(project_content)
-    
-    # 转换路径
+
+    # Convert paths
     converted_body = convert_relative_to_absolute(body, project_info.path)
-    
-    # 构建新内容（保留 YAML front-matter，确保包含 project 字段）
+
+    # Build new content (keep YAML front-matter, ensure project field exists)
     if not yaml_front.get('project'):
         yaml_front['project'] = project_info.name
-    
+
     new_content = "---\n"
     for key, value in yaml_front.items():
         new_content += f"{key}: {value}\n"
     new_content += "---\n\n"
     new_content += converted_body
-    
-    # 确定目标笔记路径
-    # 优先使用第一个笔记目录
+
+    # Determine target note path
+    # Prefer first notes directory
     target_dir = note_dirs[0] if note_dirs else None
     if not target_dir or not os.path.exists(target_dir):
-        print(f"错误: 笔记目录不存在: {target_dir}")
+        print(f"Error: Notes directory does not exist: {target_dir}")
         return False
-    
-    # 笔记文件名使用项目名称 + .md（不再使用 ! 前缀）
+
+    # Note filename uses project name + .md (no longer using ! prefix)
     note_filename = f"{project_info.name}.md"
     note_path = os.path.join(target_dir, note_filename)
-    
-    # 检查笔记是否已存在
+
+    # Check if note already exists
     if os.path.exists(note_path):
-        # 读取现有笔记
+        # Read existing note
         existing_content = read_file_content(note_path)
-        
+
         if existing_content.strip() == new_content.strip():
-            print(f"  {project_info.name}: 内容相同，无需同步")
+            print(f"  {project_info.name}: Content identical, no sync needed")
             return True
-        
+
+    if dry_run:
+        print(f"  [dry-run] Will sync {project_info.name} → {note_path}")
+        return True
+    if os.path.exists(note_path):
+        # Read existing note
+        existing_content = read_file_content(note_path)
+
+        if existing_content.strip() == new_content.strip():
+            print(f"  {project_info.name}: Content identical, no sync needed")
+            return True
+
         if not dry_run:
-            # 备份现有笔记
+            # Backup existing note
             backup_path = note_path + '.backup'
             shutil.copy2(note_path, backup_path)
-            print(f"  {project_info.name}: 已备份现有笔记到 {backup_path}")
-    
+            print(f"  {project_info.name}: Backed up existing note to {backup_path}")
+
     if dry_run:
-        print(f"  [dry-run] 将同步 {project_info.name} → {note_path}")
+        print(f"  [dry-run] Will sync {project_info.name} → {note_path}")
         return True
-    
-    # 写入笔记
+
+    # Write note
     try:
         with open(note_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
-        print(f"  ✓ {project_info.name} → {note_path}")
+        print(f"  {project_info.name} → {note_path}")
         return True
     except Exception as e:
-        print(f"  ✗ {project_info.name}: 写入失败 - {e}")
+        print(f"  {project_info.name}: Write failed - {e}")
         return False
 
 
 def collect(projects: list, note_dirs: list, dry_run: bool = False) -> None:
-    """批量收集项目到笔记
-    
+    """Batch collect projects to notes
+
     Args:
-        projects: ProjectInfo 列表
-        note_dirs: 笔记目录列表
-        dry_run: 如果为 True，只显示操作不执行
+        projects: List of ProjectInfo
+        note_dirs: List of notes directories
+        dry_run: If True, only display operation without executing
     """
     if not projects:
-        print("没有找到可同步的项目")
+        print("No projects found to sync")
         return
-    
+
     if not note_dirs:
-        print("错误: 没有配置笔记目录")
+        print("Error: No notes directories configured")
         return
-    
-    print(f"\n收集项目到笔记（{'预览模式' if dry_run else '执行模式'}）...")
-    print(f"项目数: {len(projects)}")
-    print(f"目标笔记目录: {', '.join(note_dirs)}\n")
-    
+
+    print(f"\nCollecting projects to notes ({'preview mode' if dry_run else 'execute mode'})...")
+    print(f"Projects: {len(projects)}")
+    print(f"Target notes directories: {', '.join(note_dirs)}\n")
+
     success_count = 0
     for project in projects:
         if collect_project_to_note(project, note_dirs, dry_run):
             success_count += 1
-    
-    print(f"\n完成: {success_count}/{len(projects)} 个项目已同步")
+
+    print(f"\nComplete: {success_count}/{len(projects)} projects synced")
