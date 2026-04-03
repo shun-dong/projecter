@@ -9,7 +9,7 @@ Commands:
 - distribute: Sync notes → workspace (one-way)
 - diff: Show diff between workspace and notes
 - link: Manually link project to note
-- read: Read and display a note from notes directories
+- view: View and display a note from notes directories
 - config: Manage configuration
 
 The CLI is used to manage the workspace and fetch information from the notes side.
@@ -347,11 +347,12 @@ def link(project, note):
 
 
 @cli.command(
-    short_help="Read and display a note from notes directories (NAME)",
-    help="""Read and display a note from notes directories
+    name='view',
+    short_help="View and display a note from notes directories (NAME)",
+    help="""View and display a note from notes directories
 
 Arguments:
-  NAME    Name of the note to read (without .md extension)
+  NAME    Name of the note to view (without .md extension)
 
 Searches for NAME.md in all configured notes directories and displays
 its contents. If multiple notes with the same name exist, displays
@@ -359,7 +360,7 @@ a warning and shows the first one found.
 """
 )
 @click.argument('name')
-def read(name):
+def view_note(name):
     """Read and display a note from notes directories"""
     config = get_config()
     notes_dirs = config.get('notes_dirs', config.get('note_dirs', []))
@@ -382,7 +383,13 @@ def read(name):
 
     # Read and display content
     content = read_file_content(found[0])
-    click.echo(content)
+    # Handle encoding issues on Windows terminals (GBK codec)
+    try:
+        click.echo(content)
+    except UnicodeEncodeError:
+        # Fallback: encode with errors='replace' for incompatible terminals
+        sys.stdout.write(content.encode(sys.stdout.encoding or 'utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8'))
+        sys.stdout.flush()
 
 
 @cli.command(

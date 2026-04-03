@@ -42,7 +42,7 @@ projecter list                       # List all projects
 projecter tree <name>                # Display project file tree
 
 # Notes information retrieval
-projecter read <name>                # Read and display a note
+projecter view <name>               # View and display a note
 
 # Sync (manual direction selection)
 projecter diff [name] [-v]           # Show diff ([name] optional, -v for verbose)
@@ -108,7 +108,7 @@ src/projecter/
 | File Tree | Auto insert to README | `tree` command, user copies |
 | Terminology | "project_dir" / "note_dirs" | "workspace_dir" / "notes_dirs" |
 | Collect | Exposed in CLI | Hidden (kept in Python) |
-| Read | Not available | New command to read notes |
+| View | Not available | New command to view notes |
 
 ## License
 
